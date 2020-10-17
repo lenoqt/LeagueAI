@@ -5,7 +5,8 @@ import json
 from tools import flattenList
 from tqdm import tqdm 
 import time
-from alive_progress import alive_bar
+import pymongo
+from pymongo import MongoClient
 
 
 def replace_nans_with_dict(series):
@@ -33,8 +34,6 @@ class MeatGrinder:
         rank_nb = len(self._Endpoints.ranked_solo_gen())
         for i in tqdm(range(rank_nb)):
             api_name = self._Endpoints.ranked_solo_gen()[i]
-            #print('Extracting data for Rank: {} {}'.format(f'{rank[i]}', f'{tiers[j]}'))
-            # progress(i, total=rank_nb, status='Extracting Data for rank: {}'.format(f"{api_name}"))
             r = requests.get(
                 api_name,
                 headers={'X-Riot-Token': self.api_key}
@@ -59,7 +58,6 @@ class MeatGrinder:
         self.data_list = []
         for summs in tqdm(range(summ_nb)):
             api_name = summonerId_list[summs]
-            # progress(i, total=summ_nb, status='Extracting data for accountId: {}'.format(f"{api_name}"))
             r = requests.get(
                 api_name,
                 headers={'X-Riot-Token': self.api_key}
@@ -81,7 +79,6 @@ class MeatGrinder:
         self.data_list = []
         for accs in tqdm(range(player_nb)):
             api_name = accountId_list[accs]
-            # progress(i, total=player_nb, status='Extracting matches for accountId{}'.format(f"{api_name}"))
             r = requests.get(
                 api_name,
                 headers={'X-Riot-Token': self.api_key}
@@ -98,25 +95,24 @@ class MeatGrinder:
         match_df = match_df[~rmv_mask]
         match_df = match_df.explode('matches')
         match_df = df_explosion(match_df, 'matches')
-        # match_df.drop(['startIndex', 
-        # 'endIndex',
-        # 'totalGames',
-        # 'platformId',
-        # 'champion',
-        # 'puuid', 
-        # 'name', 
-        # 'profileIconId', 
-        # 'revisionDate', 
-        # 'summonerLevel'], axis=1, inplace=True)
+        match_df.drop(['startIndex', 
+        'endIndex',
+        'totalGames',
+        'platformId',
+        'champion',
+        'puuid', 
+        'name', 
+        'profileIconId', w
+        'revisionDate', 
+        'summonerLevel'], axis=1, inplace=True, errors='ignore')
         return match_df
 
     def match_data(self, data:object):
         matchId_list = self._Endpoints.matchId_gen(data)
         match_nb = len(matchId_list)
         self.data_list = []
-        for games in tqdm(range(match_nb)):
+        for games in tqdm(range(match_nb - 1000, match_nb)):
             api_name = matchId_list[games]
-            # progress(i, total=player_nb, status='Extracting matches for accountId{}'.format(f"{api_name}"))
             r = requests.get(
                 api_name,
                 headers={'X-Riot-Token': self.api_key}
@@ -127,5 +123,20 @@ class MeatGrinder:
                 matches = r.json()
                 self.data_list.append(matches)
                 time.sleep(1)
-        games_df = pd.DataFrame.from_records(self.data_list)
+                games_df = pd.DataFrame.from_records(self.data_list)
+                games_df.drop(['participantIdentities'], axis=1, inplace=True)
+                games_df = games_df.explode('teams')
+                games_df = df_explosion(games_df, 'teams')
+                games_df.drop(['queueId', 
+                'mapId', 
+                'seasonId', 
+                'gameVersion', 
+                'gameMode', 
+                'gameType', 
+                'status', 
+                'vilemawKills', 
+                'dominionVictoryScore'
+                ], inplace=True, axis=1, errors='ignore')
+                data_win = games_df[games_df['win'] == 'Win']
+                data_fail = games_df[games_df['win'] == 'Fail']
         return games_df
