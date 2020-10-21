@@ -23,6 +23,13 @@ def df_explosion(df, col_name:str):
     df.drop([col_name], axis=1, inplace=True)
     return df
 
+def df_explosion_mc(df, col_name_idx:str):
+    return (df.set_index(col_name_idx)
+    .apply(lambda x: x.apply(pd.Series).stack())
+    .reset_index()
+    .drop('level_1', 1))
+
+
 class MeatGrinder:
 
     def __init__(self, api_key:str):
@@ -102,7 +109,7 @@ class MeatGrinder:
         'champion',
         'puuid', 
         'name', 
-        'profileIconId', w
+        'profileIconId',
         'revisionDate', 
         'summonerLevel'], axis=1, inplace=True, errors='ignore')
         return match_df
@@ -110,7 +117,7 @@ class MeatGrinder:
     def match_data(self, data:object):
         matchId_list = self._Endpoints.matchId_gen(data)
         match_nb = len(matchId_list)
-        self.data_list = []
+        df = pd.DataFrame()
         for games in tqdm(range(match_nb - 1000, match_nb)):
             api_name = matchId_list[games]
             r = requests.get(
@@ -121,22 +128,26 @@ class MeatGrinder:
                 raise Exception('403 Forbidden, renew API key')
             else:
                 matches = r.json()
-                self.data_list.append(matches)
                 time.sleep(1)
-                games_df = pd.DataFrame.from_records(self.data_list)
-                games_df.drop(['participantIdentities'], axis=1, inplace=True)
-                games_df = games_df.explode('teams')
-                games_df = df_explosion(games_df, 'teams')
-                games_df.drop(['queueId', 
-                'mapId', 
-                'seasonId', 
-                'gameVersion', 
-                'gameMode', 
-                'gameType', 
-                'status', 
-                'vilemawKills', 
-                'dominionVictoryScore'
-                ], inplace=True, axis=1, errors='ignore')
-                data_win = games_df[games_df['win'] == 'Win']
-                data_fail = games_df[games_df['win'] == 'Fail']
-        return games_df
+                games_df = pd.json_normalize(matches)
+                df = df.append(games_df, ignore_index=True)
+        df = df.explode('teams')
+        df = pd.concat([df.drop(['teams'], axis=1), df['teams'].apply(pd.Series)], axis=1)
+        df.drop(['vilemawKills',
+        'dominionVictoryScore',
+        'participantIdentities',
+        'queueId', 
+        'mapId', 
+        'seasonId', 
+        'gameVersion', 
+        'gameMode', 
+        'gameType', 
+        'status'
+        ], inplace=True, axis=1, errors='ignore')
+        data_win = df[df['win'] == 'Win']
+        data_fail = df[df['win'] == 'Fail']
+        data_win = df_explosion_mc(data_win, 'gameId')
+        data_fail = df_explosion_mc(data_fail, 'gameId')
+        data_part_w = data_win[['gameId', 'participants']]
+        data_part_f = data_fail[['gameId', 'participants']]
+        return {data_win, data_fail, data_part_w, data_part_f}
