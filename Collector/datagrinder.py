@@ -23,13 +23,6 @@ def df_explosion(df, col_name:str):
     df.drop([col_name], axis=1, inplace=True)
     return df
 
-def df_explosion_mc(df, col_name_idx:str):
-    return (df.set_index(col_name_idx)
-    .apply(lambda x: x.apply(pd.Series).stack())
-    .reset_index()
-    .drop('level_1', 1))
-
-
 class MeatGrinder:
 
     def __init__(self, api_key:str):
@@ -132,22 +125,27 @@ class MeatGrinder:
                 games_df = pd.json_normalize(matches)
                 df = df.append(games_df, ignore_index=True)
         df = df.explode('teams')
-        df = pd.concat([df.drop(['teams'], axis=1), df['teams'].apply(pd.Series)], axis=1)
-        df.drop(['vilemawKills',
-        'dominionVictoryScore',
-        'participantIdentities',
+        df.drop(['platformId', 
+        'gameCreation', 
+        'gameDuration', 
         'queueId', 
         'mapId', 
         'seasonId', 
         'gameVersion', 
         'gameMode', 
         'gameType', 
-        'status'
+        'status.status_code', 
+        'status.message'], inplace=True, axis=1, errors='ignore')
+        df = pd.concat([df.drop(['teams'], axis=1), df['teams'].apply(pd.Series)], axis=1)
+        df.drop(['dominionVictoryScore',
+        'vilemawKills'
         ], inplace=True, axis=1, errors='ignore')
         data_win = df[df['win'] == 'Win']
         data_fail = df[df['win'] == 'Fail']
-        data_win = df_explosion_mc(data_win, 'gameId')
-        data_fail = df_explosion_mc(data_fail, 'gameId')
         data_part_w = data_win[['gameId', 'participants']]
         data_part_f = data_fail[['gameId', 'participants']]
-        return {data_win, data_fail, data_part_w, data_part_f}
+        data_part_w = data_part_w.explode('participants')
+        data_part_f = data_part_f.explode('participants')
+        data_part_w = pd.concat([data_part_w.drop(['participants'], axis=1), data_part_w['participants'].apply(pd.Series)], axis=1)
+        data_part_f = pd.concat([data_part_f.drop(['participants'], axis=1), data_part_f['participants'].apply(pd.Series)], axis=1)
+        return data_win, data_fail, data_part_w, data_part_f
