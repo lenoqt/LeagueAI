@@ -5,7 +5,8 @@ import json
 from tools import flattenList
 from tqdm import tqdm 
 import time
-from alive_progress import alive_bar
+import pymongo
+from pymongo import MongoClient
 
 
 def replace_nans_with_dict(series):
@@ -33,8 +34,6 @@ class MeatGrinder:
         rank_nb = len(self._Endpoints.ranked_solo_gen())
         for i in tqdm(range(rank_nb)):
             api_name = self._Endpoints.ranked_solo_gen()[i]
-            #print('Extracting data for Rank: {} {}'.format(f'{rank[i]}', f'{tiers[j]}'))
-            # progress(i, total=rank_nb, status='Extracting Data for rank: {}'.format(f"{api_name}"))
             r = requests.get(
                 api_name,
                 headers={'X-Riot-Token': self.api_key}
@@ -59,7 +58,6 @@ class MeatGrinder:
         self.data_list = []
         for summs in tqdm(range(summ_nb)):
             api_name = summonerId_list[summs]
-            # progress(i, total=summ_nb, status='Extracting data for accountId: {}'.format(f"{api_name}"))
             r = requests.get(
                 api_name,
                 headers={'X-Riot-Token': self.api_key}
@@ -81,7 +79,6 @@ class MeatGrinder:
         self.data_list = []
         for accs in tqdm(range(player_nb)):
             api_name = accountId_list[accs]
-            # progress(i, total=player_nb, status='Extracting matches for accountId{}'.format(f"{api_name}"))
             r = requests.get(
                 api_name,
                 headers={'X-Riot-Token': self.api_key}
@@ -98,25 +95,24 @@ class MeatGrinder:
         match_df = match_df[~rmv_mask]
         match_df = match_df.explode('matches')
         match_df = df_explosion(match_df, 'matches')
-        # match_df.drop(['startIndex', 
-        # 'endIndex',
-        # 'totalGames',
-        # 'platformId',
-        # 'champion',
-        # 'puuid', 
-        # 'name', 
-        # 'profileIconId', 
-        # 'revisionDate', 
-        # 'summonerLevel'], axis=1, inplace=True)
+        match_df.drop(['startIndex', 
+        'endIndex',
+        'totalGames',
+        'platformId',
+        'champion',
+        'puuid', 
+        'name', 
+        'profileIconId',
+        'revisionDate', 
+        'summonerLevel'], axis=1, inplace=True, errors='ignore')
         return match_df
 
     def match_data(self, data:object):
         matchId_list = self._Endpoints.matchId_gen(data)
         match_nb = len(matchId_list)
-        self.data_list = []
-        for games in tqdm(range(match_nb)):
+        df = pd.DataFrame()
+        for games in tqdm(range(match_nb - 1000, match_nb)):
             api_name = matchId_list[games]
-            # progress(i, total=player_nb, status='Extracting matches for accountId{}'.format(f"{api_name}"))
             r = requests.get(
                 api_name,
                 headers={'X-Riot-Token': self.api_key}
@@ -125,7 +121,31 @@ class MeatGrinder:
                 raise Exception('403 Forbidden, renew API key')
             else:
                 matches = r.json()
-                self.data_list.append(matches)
                 time.sleep(1)
-        games_df = pd.DataFrame.from_records(self.data_list)
-        return games_df
+                games_df = pd.json_normalize(matches)
+                df = df.append(games_df, ignore_index=True)
+        df = df.explode('teams')
+        df.drop(['platformId', 
+        'gameCreation', 
+        'gameDuration', 
+        'queueId', 
+        'mapId', 
+        'seasonId', 
+        'gameVersion', 
+        'gameMode', 
+        'gameType', 
+        'status.status_code', 
+        'status.message'], inplace=True, axis=1, errors='ignore')
+        df = pd.concat([df.drop(['teams'], axis=1), df['teams'].apply(pd.Series)], axis=1)
+        df.drop(['dominionVictoryScore',
+        'vilemawKills'
+        ], inplace=True, axis=1, errors='ignore')
+        data_win = df[df['win'] == 'Win']
+        data_fail = df[df['win'] == 'Fail']
+        data_part_w = data_win[['gameId', 'participants']]
+        data_part_f = data_fail[['gameId', 'participants']]
+        data_part_w = data_part_w.explode('participants')
+        data_part_f = data_part_f.explode('participants')
+        data_part_w = pd.concat([data_part_w.drop(['participants'], axis=1), data_part_w['participants'].apply(pd.Series)], axis=1)
+        data_part_f = pd.concat([data_part_f.drop(['participants'], axis=1), data_part_f['participants'].apply(pd.Series)], axis=1)
+        return data_win, data_fail, data_part_w, data_part_f
