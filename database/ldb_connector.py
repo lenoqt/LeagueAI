@@ -1,24 +1,14 @@
-import pymongo
+from pymongo import MongoClient
 
+class MongoCollection(object):
 
-class LAIDBConnectionManager:
+    def __init__(self, uri='localhost:27017'):
+        self.uri = uri
+        self.collection = None
 
-    def __init__(self, host:str, port:int):
-        self.host = host
-        self.port = port
-        self.connection = None
-        
     def __enter__(self):
-        try:
-            self.connection = pymongo.MongoClient(
-                host=self.host, 
-                port=self.port,
-                serverSelectionTimeoutMS = 3000
-            )
-        except pymongo.errors.ServerSelectionTimeoutError as err:
-            self.connection = None
-            print('pymongo error', err)
+        self.connection = MongoClient(self.uri)
         return self
-    
-    def __exit__(self, exc_type, exc_value, traceback):
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
         self.connection.close()
