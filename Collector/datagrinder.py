@@ -1,16 +1,14 @@
 #!/usr/bin/python3
 import pandas as pd 
-from LeagueAI.collector.endpoints import Endpoints
+from collector.endpoints import Endpoints
 import requests
 import json
-from LeagueAI.collector.tools import flattenList
+from collector.tools import flattenList
 from tqdm import tqdm 
 import time
 import os, sys
-import LeagueAI.database.ldb_connector as ldb_connector
+import database.ldb_connector as ldb_connector
 
-HOME_DIR = os.environ['HOME_DIR']
-sys.path.insert(0, HOME_DIR)
 
 def replace_nans_with_dict(series):
     for idx in series[series.isnull()].index:
