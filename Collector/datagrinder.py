@@ -1,13 +1,16 @@
+#!/usr/bin/python3
 import pandas as pd 
-from endpoints import Endpoints
+from LeagueAI.collector.endpoints import Endpoints
 import requests
 import json
-from tools import flattenList
+from LeagueAI.collector.tools import flattenList
 from tqdm import tqdm 
 import time
-import pymongo
-from pymongo import MongoClient
+import os, sys
+import LeagueAI.database.ldb_connector as ldb_connector
 
+HOME_DIR = os.environ['HOME_DIR']
+sys.path.insert(0, HOME_DIR)
 
 def replace_nans_with_dict(series):
     for idx in series[series.isnull()].index:
@@ -29,6 +32,7 @@ class MeatGrinder:
         self.api_key = api_key
         self.data_list = []
         self._Endpoints = Endpoints('JP1')
+        self.mongo = ldb_connector.MongoCollection()
     
     def ranked_5x5_data(self):
         rank_nb = len(self._Endpoints.ranked_solo_gen())
@@ -71,6 +75,12 @@ class MeatGrinder:
                 time.sleep(1)
                 df[['accountId', 'summonerLevel']] = temp_df[['accountId', 'summonerLevel']]
                 del temp_df
+                post_data = df.to_dict('records')
+                with self.mongo:
+                    collection = self.mongo.connection.leagueai.ranked_5x5
+                    result = collection.insert_many(post_data)
+                    print('Inserted {0}'.format(result.inserted_id))
+
         return df
 
     def match_data_players(self, data:object):
