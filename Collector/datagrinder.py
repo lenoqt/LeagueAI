@@ -1,16 +1,14 @@
 #!/usr/bin/python3
 import pandas as pd 
-from LeagueAI.collector.endpoints import Endpoints
+from collector.endpoints import Endpoints
 import requests
 import json
-from LeagueAI.collector.tools import flattenList
+from collector.tools import flattenList
 from tqdm import tqdm 
 import time
 import os, sys
-import LeagueAI.database.ldb_connector as ldb_connector
+import database.ldb_connector as ldb_connector
 
-HOME_DIR = os.environ['HOME_DIR']
-sys.path.insert(0, HOME_DIR)
 
 def replace_nans_with_dict(series):
     for idx in series[series.isnull()].index:
@@ -57,6 +55,13 @@ class MeatGrinder:
         'freshBlood',
         'inactive'], axis=1, inplace=True)
         df['winRatio'] = (df['wins'] / (df['wins'] + df['losses']))
+        post_data_s = df.to_dict("records")
+        print(type(post_data_s))
+        # post_data_s = json.dumps(post_data_s)
+        # post_data_s = json.loads(post_data_s)
+        with self.mongo:
+            collection = self.mongo.connection.leagueai.ranked_5x5_tiers
+            collection.insert_many(post_data_s)
         summonerId_list = self._Endpoints.playerId_gen(df)
         summ_nb = len(summonerId_list)
         self.data_list = []
@@ -75,12 +80,12 @@ class MeatGrinder:
                 time.sleep(1)
                 df[['accountId', 'summonerLevel']] = temp_df[['accountId', 'summonerLevel']]
                 del temp_df
-                post_data = df.to_dict('records')
+                post_data = json.dumps(accounts)
+                post_data = json.loads(post_data)
                 with self.mongo:
                     collection = self.mongo.connection.leagueai.ranked_5x5
-                    result = collection.insert_many(post_data)
-                    print('Inserted {0}'.format(result.inserted_id))
-
+                    result = collection.insert_one(post_data)
+                    # print('Inserted {0}'.format(result.inserted_id))
         return df
 
     def match_data_players(self, data:object):
