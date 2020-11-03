@@ -1,13 +1,13 @@
 #!/usr/bin/python3
 import pandas as pd 
-from collector.endpoints import Endpoints
 import requests
 import json
-from collector.tools import flattenList
 from tqdm import tqdm 
-import time
-import os, sys
+from time import sleep
 import database.ldb_connector as ldb_connector
+from collector.tools import flattenList
+from collector.endpoints import Endpoints
+from ratelimit import limits, sleep_and_retry
 
 
 def replace_nans_with_dict(series):
@@ -24,6 +24,7 @@ def df_explosion(df, col_name:str):
     df.drop([col_name], axis=1, inplace=True)
     return df
 
+
 class MeatGrinder:
 
     def __init__(self, api_key:str):
@@ -31,34 +32,44 @@ class MeatGrinder:
         self.data_list = []
         self._Endpoints = Endpoints('JP1')
         self.mongo = ldb_connector.MongoCollection()
-    
+
+    @sleep_and_retry
+    @limits(calls=0.05, period=1)
+    def api_call(self, url):
+        try:
+            r = requests.get(
+                url,
+                headers={'X-Riot-Token': self.api_key}
+                )
+            if (r.status_code != 200):
+                raise Exception
+        except:
+            if (r.status_code == 429):
+                print('\nCatched exception API Response: {} Sleeping...'.format(r.status_code))
+                sleep(5)
+                self.api_call(url)
+            elif (r.status_code == 403):
+                self.api_key = input('\nPlease update API key:')
+                self.api_call(url)
+        return r
+
     def ranked_5x5_data(self):
         rank_nb = len(self._Endpoints.ranked_solo_gen())
         for i in tqdm(range(rank_nb)):
             api_name = self._Endpoints.ranked_solo_gen()[i]
-            r = requests.get(
-                api_name,
-                headers={'X-Riot-Token': self.api_key}
-            )
-            if str(r) == '<Response [403]>':
-                raise Exception('403 Forbidden, renew API key')
-            else:
-                summoners = r.json()
-                self.data_list.append(summoners)
-                time.sleep(1)
+            r = self.api_call(api_name)
+            summoners = r.json()
+            self.data_list.append(summoners)
         df = pd.DataFrame.from_records(flattenList(self.data_list))
         df.drop(['queueType', 
         'summonerName', 
         'leagueId', 
         'hotStreak',
-        'miniSeries', 
+        'miniSeries',
         'freshBlood',
-        'inactive'], axis=1, inplace=True)
+        'inactive'], axis=1, inplace=True, errors='ignore')
         df['winRatio'] = (df['wins'] / (df['wins'] + df['losses']))
         post_data_s = df.to_dict("records")
-        print(type(post_data_s))
-        # post_data_s = json.dumps(post_data_s)
-        # post_data_s = json.loads(post_data_s)
         with self.mongo:
             collection = self.mongo.connection.leagueai.ranked_5x5_tiers
             collection.insert_many(post_data_s)
@@ -67,25 +78,18 @@ class MeatGrinder:
         self.data_list = []
         for summs in tqdm(range(summ_nb)):
             api_name = summonerId_list[summs]
-            r = requests.get(
-                api_name,
-                headers={'X-Riot-Token': self.api_key}
-            )
-            if str(r) == '<Response [403]':
-                raise Exception('403 Forbidden, renew API key')
-            else:
-                accounts = r.json()
-                self.data_list.append(accounts)
-                temp_df = pd.DataFrame.from_records(self.data_list)
-                time.sleep(1)
-                df[['accountId', 'summonerLevel']] = temp_df[['accountId', 'summonerLevel']]
-                del temp_df
-                post_data = json.dumps(accounts)
-                post_data = json.loads(post_data)
-                with self.mongo:
-                    collection = self.mongo.connection.leagueai.ranked_5x5
-                    result = collection.insert_one(post_data)
-                    # print('Inserted {0}'.format(result.inserted_id))
+            r = self.api_call(api_name)
+            accounts = r.json()
+            print(accounts)
+            self.data_list.append(accounts)
+            temp_df = pd.DataFrame.from_records(self.data_list)
+            df[['accountId', 'summonerLevel']] = temp_df[['accountId', 'summonerLevel']]
+            del temp_df
+            post_data = json.dumps(accounts)
+            post_data = json.loads(post_data)
+            with self.mongo:
+                collection = self.mongo.connection.leagueai.ranked_5x5
+                collection.insert_one(post_data)
         return df
 
     def match_data_players(self, data:object):
@@ -94,16 +98,9 @@ class MeatGrinder:
         self.data_list = []
         for accs in tqdm(range(player_nb)):
             api_name = accountId_list[accs]
-            r = requests.get(
-                api_name,
-                headers={'X-Riot-Token': self.api_key}
-            )
-            if str(r) == '<Response [403]>':
-                raise Exception('403 Forbidden, renew API key')
-            else:
-                matches = r.json()
-                self.data_list.append(matches)
-                time.sleep(1)
+            r = self.api_call(api_name)
+            matches = r.json()
+            self.data_list.append(matches)
         match_df = pd.DataFrame.from_records(self.data_list)
         rmv_mask = match_df['matches'].apply(lambda x: isinstance(x, (float, str)))
         match_df.reset_index(drop=True, inplace=True)
@@ -128,17 +125,10 @@ class MeatGrinder:
         df = pd.DataFrame()
         for games in tqdm(range(match_nb - 1000, match_nb)):
             api_name = matchId_list[games]
-            r = requests.get(
-                api_name,
-                headers={'X-Riot-Token': self.api_key}
-            )
-            if str(r) == '<Response [403]>':
-                raise Exception('403 Forbidden, renew API key')
-            else:
-                matches = r.json()
-                time.sleep(1)
-                games_df = pd.json_normalize(matches)
-                df = df.append(games_df, ignore_index=True)
+            r = self.api_call(api_name)
+            matches = r.json()
+            games_df = pd.json_normalize(matches)
+            df = df.append(games_df, ignore_index=True)
         df = df.explode('teams')
         df.drop(['platformId', 
         'gameCreation', 
