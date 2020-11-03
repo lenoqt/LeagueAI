@@ -35,7 +35,7 @@ class MeatGrinder:
 
     @sleep_and_retry
     @limits(calls=0.05, period=1)
-    def api_call(self, url):
+    def api_call(self, url):   #TODO: Dynamic Sleep, it takes way too much to extract data.
         try:
             r = requests.get(
                 url,
@@ -47,10 +47,10 @@ class MeatGrinder:
             if (r.status_code == 429):
                 print('\nCatched exception API Response: {} Sleeping...'.format(r.status_code))
                 sleep(5)
-                self.api_call(url)
+                r = self.api_call(url)
             elif (r.status_code == 403):
                 self.api_key = input('\nPlease update API key:')
-                self.api_call(url)
+                r = self.api_call(url)
         return r
 
     def ranked_5x5_data(self):
@@ -80,7 +80,6 @@ class MeatGrinder:
             api_name = summonerId_list[summs]
             r = self.api_call(api_name)
             accounts = r.json()
-            print(accounts)
             self.data_list.append(accounts)
             temp_df = pd.DataFrame.from_records(self.data_list)
             df[['accountId', 'summonerLevel']] = temp_df[['accountId', 'summonerLevel']]
