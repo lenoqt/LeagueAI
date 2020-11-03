@@ -35,7 +35,7 @@ class MeatGrinder:
 
     @sleep_and_retry
     @limits(calls=0.05, period=1)
-    def api_call(self, url):   #TODO: Dynamic Sleep, it takes way too much to extract data.
+    def api_call(self, url, timer=0.1):   #TODO: Dynamic Sleep, it takes way too much to extract data.
         try:
             r = requests.get(
                 url,
@@ -45,9 +45,10 @@ class MeatGrinder:
                 raise Exception
         except:
             if (r.status_code == 429):
-                print('\nCatched exception API Response: {} Sleeping...'.format(r.status_code))
-                sleep(5)
-                r = self.api_call(url)
+                print('\nAPI Response: {} Rate limiting for... {}secs'.format(r.status_code, round(timer, 2)))
+                sleep(timer)
+                timer += 0.1
+                r = self.api_call(url, timer)
             elif (r.status_code == 403):
                 self.api_key = input('\nPlease update API key:')
                 r = self.api_call(url)
@@ -116,6 +117,10 @@ class MeatGrinder:
         'profileIconId',
         'revisionDate', 
         'summonerLevel'], axis=1, inplace=True, errors='ignore')
+        post_data_m = match_df.to_dict("records")
+        with self.mongo:
+            collection = self.mongo.connection.leagueai.ranked_5x5_matchids
+            collection.insert_many(post_data_m)
         return match_df
 
     def match_data(self, data:object):
@@ -152,4 +157,17 @@ class MeatGrinder:
         data_part_f = data_part_f.explode('participants')
         data_part_w = pd.concat([data_part_w.drop(['participants'], axis=1), data_part_w['participants'].apply(pd.Series)], axis=1)
         data_part_f = pd.concat([data_part_f.drop(['participants'], axis=1), data_part_f['participants'].apply(pd.Series)], axis=1)
-        return data_win, data_fail, data_part_w, data_part_f
+        post_data_1 = data_win.to_dict("records")
+        post_data_2 = data_fail.to_dict("records")
+        post_data_3 = data_part_w.to_dict("records")
+        post_data_4 = data_part_f.to_dict("records")
+        # with self.mongo:
+        #     collection = self.mongo.connection.leagueai.ranked_5x5_matches_1
+        #     collection.insert_many(post_data_1)
+        #     collection = self.mongo.connection.leagueai.ranked_5x5_matches_2
+        #     collection.insert_many(post_data_2)
+        #     collection = self.mongo.connection.leagueai.ranked_5x5_matches_3
+        #     collection.insert_many(post_data_3)
+        #     collection = self.mongo.connection.leagueai.ranked_5x5_matches_4
+        #     collection.insert_many(post_data_4)
+        return post_data_1, post_data_2, post_data_3, post_data_4
