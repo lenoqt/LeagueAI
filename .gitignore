@@ -1,2 +1,4 @@
 # Test file
 test.py
+# Byte-compiled
+__pycache__
