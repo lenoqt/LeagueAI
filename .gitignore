@@ -2,3 +2,4 @@
 test.py
 # Byte-compiled
 __pycache__
+.pylintrc
