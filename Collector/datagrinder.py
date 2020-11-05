@@ -1,29 +1,16 @@
 #!/usr/bin/python3
-import pandas as pd 
-import requests
 import json
 import sys
-from tqdm import tqdm 
 from time import sleep
+import requests
+import pandas as pd
+from tqdm import tqdm
+from ratelimit import limits, sleep_and_retry
 import database.ldb_connector as ldb_connector
 from collector.tools import flattenList
+from collector.tools import df_explosion
 from collector.endpoints import Endpoints
-from ratelimit import limits, sleep_and_retry
 
-
-def replace_nans_with_dict(series):
-    for idx in series[series.isnull()].index:
-        series.at[idx] = {}
-    return series
-
-def df_explosion(df, col_name:str):
-    if df[col_name].isna().any():
-        df[col_name] = replace_nans_with_dict(df[col_name])
-    df.reset_index(drop=True, inplace=True)
-    df1 = pd.DataFrame(df.loc[:,col_name].values.tolist())
-    df = pd.concat([df,df1], axis=1)
-    df.drop([col_name], axis=1, inplace=True)
-    return df
 
 
 class MeatGrinder:
@@ -36,21 +23,22 @@ class MeatGrinder:
 
     @sleep_and_retry
     @limits(calls=200, period=120)
-    def api_call(self, url, timer=60):   #TODO: Dynamic Sleep, it takes way too much to extract data.
+    def api_call(self, url, timer=60):
         try:
             r = requests.get(
                 url,
                 headers={'X-Riot-Token': self.api_key}
                 )
-            if (r.status_code != 200):
+            if r.status_code != 200:
                 raise Exception
         except:
-            if (r.status_code == 429):
-                sys.stdout.write('\n\rAPI Response: {} Rate limiting for... {}secs'.format(r.status_code, round(timer, 2)))
+            if r.status_code == 429:
+                sys.stdout.write('\n\rAPI Response: {} Rate limiting for... {}secs'.
+                format(r.status_code, round(timer, 2)))
                 sleep(timer)
                 timer += 5
                 r = self.api_call(url, timer)
-            elif (r.status_code == 403):
+            elif r.status_code == 403:
                 self.api_key = input('\nPlease update API key:')
                 r = self.api_call(url)
         return r
@@ -63,8 +51,8 @@ class MeatGrinder:
             summoners = r.json()
             self.data_list.append(summoners)
         df = pd.DataFrame.from_records(flattenList(self.data_list))
-        df.drop(['queueType', 
-        'summonerName', 
+        df.drop(['queueType',
+        'summonerName',
         'leagueId',
         'revisionDate',
         'miniSeries',
@@ -108,15 +96,15 @@ class MeatGrinder:
         match_df = match_df[~rmv_mask]
         match_df = match_df.explode('matches')
         match_df = df_explosion(match_df, 'matches')
-        match_df.drop(['startIndex', 
+        match_df.drop(['startIndex',
         'endIndex',
         'status',
         'platformId',
         'champion',
-        'puuid', 
-        'name', 
+        'puuid',
+        'name',
         'profileIconId',
-        'revisionDate', 
+        'revisionDate',
         'summonerLevel'], axis=1, inplace=True, errors='ignore')
         match_df = match_df[match_df['queue'] == 420] #Only solo queue
         post_data_m = match_df.to_dict("records")
@@ -136,16 +124,16 @@ class MeatGrinder:
             games_df = pd.json_normalize(matches)
             df = df.append(games_df, ignore_index=True)
         df = df.explode('teams')
-        df.drop(['platformId', 
-        'gameCreation', 
-        'gameDuration', 
-        'queueId', 
-        'mapId', 
-        'seasonId', 
-        'gameVersion', 
-        'gameMode', 
-        'gameType', 
-        'status.status_code', 
+        df.drop(['platformId',
+        'gameCreation',
+        'gameDuration',
+        'queueId',
+        'mapId',
+        'seasonId',
+        'gameVersion',
+        'gameMode',
+        'gameType',
+        'status.status_code',
         'status.message'], inplace=True, axis=1, errors='ignore')
         df = pd.concat([df.drop(['teams'], axis=1), df['teams'].apply(pd.Series)], axis=1)
         df.drop(['dominionVictoryScore',
@@ -157,8 +145,10 @@ class MeatGrinder:
         data_part_f = data_fail[['gameId', 'participants']]
         data_part_w = data_part_w.explode('participants')
         data_part_f = data_part_f.explode('participants')
-        data_part_w = pd.concat([data_part_w.drop(['participants'], axis=1), data_part_w['participants'].apply(pd.Series)], axis=1)
-        data_part_f = pd.concat([data_part_f.drop(['participants'], axis=1), data_part_f['participants'].apply(pd.Series)], axis=1)
+        data_part_w = pd.concat([data_part_w.drop(['participants'], axis=1),
+        data_part_w['participants'].apply(pd.Series)], axis=1)
+        data_part_f = pd.concat([data_part_f.drop(['participants'], axis=1),
+        data_part_f['participants'].apply(pd.Series)], axis=1)
         post_data_1 = json.loads(json.dumps(data_win.to_dict("records")))
         post_data_2 = json.loads(json.dumps(data_fail.to_dict("records")))
         post_data_3 = json.loads(json.dumps(data_part_w.to_dict("records")))
@@ -175,4 +165,4 @@ class MeatGrinder:
                 collection.insert_many(post_data_4)
         except:
             pass
-        return 
+        return

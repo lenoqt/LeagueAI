@@ -1,4 +1,3 @@
-import pandas as pd
 
 class Endpoints:
 
@@ -30,7 +29,7 @@ class Endpoints:
             'RU':'https://ru.api.riotgames.com',
             }
         self.url = self.regions[self.region]
-    
+
     def ranked_solo_gen(self):
         return [f"{self.url}/lol/league/v4/entries/RANKED_SOLO_5x5/{i}/{j}?page=1" for i in self.ranks for j in self.tiers]
 
@@ -45,10 +44,3 @@ class Endpoints:
     def matchId_gen(self, data):
         data = data['gameId'].tolist()
         return [f"{self.url}/lol/match/v4/matches/{i}" for i in data]
-
-
-
-
-
-
-
