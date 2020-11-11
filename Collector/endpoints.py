@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 
 class Endpoints:
 
@@ -31,7 +32,8 @@ class Endpoints:
         self.url = self.regions[self.region]
 
     def ranked_solo_gen(self):
-        return [f"{self.url}/lol/league/v4/entries/RANKED_SOLO_5x5/{i}/{j}?page=1" for i in self.ranks for j in self.tiers]
+        return [f"{self.url}/lol/league/v4/entries/RANKED_SOLO_5x5/{i}/{j}?page=1"
+        for i in self.ranks for j in self.tiers]
 
     def playerId_gen(self, data):
         data = data['summonerId'].tolist()
