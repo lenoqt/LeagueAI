@@ -25,4 +25,3 @@ def df_explosion(df, col_name:str):
     df = pd.concat([df,df1], axis=1)
     df.drop([col_name], axis=1, inplace=True)
     return df
-
