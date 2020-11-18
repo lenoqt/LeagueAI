@@ -1,5 +1,6 @@
 # Test file
 test.py
 # Byte-compiled
-__pycache__
+__pycache__/
+#Pylint
 .pylintrc
